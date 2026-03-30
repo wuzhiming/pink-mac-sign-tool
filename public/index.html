@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PinK- macOS 签名与公证工具</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+    <div class="background-blobs">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+        <div class="blob blob-3"></div>
+    </div>
+
+    <div class="container">
+        <header>
+            <h1>PinK macOS 签名与公证</h1>
+            <p class="subtitle">让二进制分发变得简单且安全</p>
+        </header>
+
+        <main class="glass-panel">
+            <section class="upload-section">
+                <div id="drop-zone" class="drop-zone">
+                    <div class="drop-zone-content">
+                        <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+                        </svg>
+                        <p>将文件拖拽至此，或 <span>点击选择</span></p>
+                        <p class="file-hint">支持单个二进制文件或包含多个文件的 ZIP</p>
+                    </div>
+                    <input type="file" id="file-input" hidden>
+                </div>
+
+                <div id="file-info" class="file-info hidden">
+                    <span id="file-name">filename.zip</span>
+                    <button id="remove-file" class="btn-icon">×</button>
+                </div>
+            </section>
+
+            <section class="controls-section">
+                <div class="checkbox-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="sign-checkbox" checked>
+                        <span class="custom-checkbox"></span>
+                        进行代码签名 (Codesign)
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="notarize-checkbox" checked>
+                        <span class="custom-checkbox"></span>
+                        进行苹果公证 (Notarize)
+                    </label>
+                </div>
+
+                <button id="start-btn" class="primary-btn" disabled>开始处理</button>
+            </section>
+
+            <section id="progress-section" class="progress-section hidden">
+                <div class="progress-bar-container">
+                    <div id="progress-bar" class="progress-bar"></div>
+                </div>
+                <div id="log-console" class="log-console">
+                    <div class="log-line system">等待处理开始...</div>
+                </div>
+                <div class="download-container hidden" id="download-container">
+                    <a id="download-link" href="#" class="download-btn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                        </svg>
+                        下载签名后的 ZIP 包
+                    </a>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>© 2026 PinK-macOS-Sign-Tool. 仅供内网开发使用。</p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
