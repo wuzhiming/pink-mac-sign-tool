@@ -251,7 +251,7 @@ async function verifyBinaries(binaries, logger = console.log) {
  * Main processing function
  */
 async function processBinaries(workingDir, options, logger = console.log) {
-    const { sign = true, notarize = true } = options;
+    const { sign = true, notarize = true, addExecPermission = true } = options;
 
     if (process.platform !== 'darwin') {
         throw new Error('This tool only works on macOS.');
@@ -261,6 +261,13 @@ async function processBinaries(workingDir, options, logger = console.log) {
     if (binaries.length === 0) {
         logger('No binaries found to process.');
         return;
+    }
+
+    if (addExecPermission) {
+        logger('Adding executable permission (+x) to mach-o binaries...');
+        for (const binary of binaries) {
+            await fs.chmod(binary, 0o755);
+        }
     }
 
     if (sign || notarize) {

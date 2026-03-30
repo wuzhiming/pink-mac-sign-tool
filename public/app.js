@@ -7,6 +7,7 @@ const fileNameDisplay = document.getElementById('file-name');
 const removeFileBtn = document.getElementById('remove-file');
 const signCheckbox = document.getElementById('sign-checkbox');
 const notarizeCheckbox = document.getElementById('notarize-checkbox');
+const addExecCheckbox = document.getElementById('add-exec-checkbox');
 const startBtn = document.getElementById('start-btn');
 const progressSection = document.getElementById('progress-section');
 const progressBar = document.getElementById('progress-bar');
@@ -116,7 +117,8 @@ startBtn.addEventListener('click', async () => {
             fileName: result.fileName,
             options: {
                 sign: signCheckbox.checked,
-                notarize: notarizeCheckbox.checked
+                notarize: notarizeCheckbox.checked,
+                addExecPermission: addExecCheckbox.checked
             }
         });
 
