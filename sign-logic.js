@@ -10,27 +10,36 @@ const AdmZip = require('adm-zip');
  */
 async function runCommand(cmd, args = [], options = {}, logger = console.log) {
     return new Promise((resolve, reject) => {
-        // Only log the command itself, not the sensitive arguments
-        logger(`[Executing] ${cmd}`);
+        // Mask sensitive arguments in the logs
+        // Mask sensitive arguments in the logs
+        const loggedArgs = args.map((a, i, arr) => {
+            if (i > 0 && ['--password', '--apple-id', '--team-id'].includes(arr[i - 1])) {
+                return '********';
+            }
+            return a.includes(' ') ? `"${a}"` : a;
+        });
+        // Console log for server-side debugging, don't spam the frontend logger
+        console.log(`[Executing] ${cmd} ${loggedArgs.join(' ')}`);
         
         const child = spawn(cmd, args, { 
-            shell: true, 
             stdio: ['ignore', 'pipe', 'pipe'],
             ...options 
         });
 
-        child.stdout.on('data', (data) => logger(data.toString().trim()));
+        let errorOutput = '';
+
+        child.stdout.on('data', (data) => console.log(`[STDOUT] ${data.toString().trim()}`));
         child.stderr.on('data', (data) => {
             const out = data.toString().trim();
-            // Optional: mask sensitive output if needed, but usually it's in the command args
-            logger(`[Output] ${out}`);
+            errorOutput += out + '\n';
+            console.log(`[STDERR] ${out}`);
         });
 
         child.on('close', (code) => {
             if (code === 0) {
                 resolve();
             } else {
-                reject(new Error(`Command ${cmd} failed with code ${code}.`));
+                reject(new Error(`Command ${cmd} failed with code ${code}.\n${errorOutput.trim()}`));
             }
         });
         
@@ -44,7 +53,7 @@ async function runCommand(cmd, args = [], options = {}, logger = console.log) {
 async function isMachOBinary(filePath, logger = console.log) {
     try {
         const { stdout } = await new Promise((resolve, reject) => {
-            const child = spawn('file', [filePath], { shell: true });
+            const child = spawn('file', [filePath]);
             let output = '';
             child.stdout.on('data', (data) => output += data.toString());
             child.on('close', (code) => code === 0 ? resolve({ stdout: output }) : reject(new Error(`Exit code ${code}`)));
@@ -52,13 +61,18 @@ async function isMachOBinary(filePath, logger = console.log) {
         });
 
         // Mach-O files will contain "Mach-O" in the output of the `file` command
-        const signable = stdout.includes('Mach-O') || stdout.includes('executable');
+        const signable = stdout.toLowerCase().includes('mach-o') || stdout.toLowerCase().includes('executable');
         if (!signable) {
-            logger(`[Skip] ${path.basename(filePath)} is not a signable Mach-O binary.`);
+            // Only log if it's not a common noise file (like we might have already filtered some, but this is a double check)
+            if (stdout && !stdout.includes('text') && !stdout.includes('empty')) {
+                console.log(`[Skip] ${path.basename(filePath)}: file command output was "${stdout.trim()}"`);
+            } else {
+                console.log(`[Skip] ${path.basename(filePath)} is not a signable Mach-O binary.`);
+            }
         }
         return signable;
     } catch (error) {
-        logger(`[Warning] Could not check file type for ${path.basename(filePath)}: ${error.message}`);
+        console.error(`[Warning] Could not check file type for ${path.basename(filePath)}: ${error.message}`);
         return false;
     }
 }
@@ -91,25 +105,30 @@ async function findBinaries(targetPath, logger = console.log) {
         const ext = path.extname(file).toLowerCase();
         const name = path.basename(file);
         
-        // Match by extension first
-        if (['.node', '.dylib', '.app'].includes(ext)) {
+        // Match by extension first (fast path)
+        const binaryExtensions = ['.node', '.dylib', '.app', '.framework', '.bundle'];
+        if (binaryExtensions.includes(ext)) {
             candidates.push(file);
             continue;
         }
         
-        // Match by known executable names
+        // Negative filter: some extensions we definitely don't want to run `file` on to save time
+        const ignoredExtensions = [
+            '.txt', '.json', '.md', '.log', '.js', '.ts', '.css', '.html', 
+            '.map', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico',
+            '.zip', '.gz', '.tar', '.7z', '.xml', '.plist', '.plist', '.sh', 
+            '.bat', '.py', '.rb', '.yml', '.yaml', '.gitignore', '.env'
+        ];
+
+        // Known executable names that might not have extensions
         const knownExecutables = [
             'ffprobe', 'ffmpeg', 'FBX-glTF-conv', 'astcenc', 
             'cmftRelease64', 'LightFX', 'composite', 
             'convert', 'etcpack', 'PVRTexToolCLI'
         ];
-        if (knownExecutables.includes(name)) {
-            candidates.push(file);
-            continue;
-        }
 
-        // If no extension or unknown name, check if it's a Mach-O binary
-        if (ext === '' || ext === '.exe') {
+        // If it's not in the ignored list, or it is a known binary name, check it
+        if (knownExecutables.includes(name) || !ignoredExtensions.includes(ext)) {
             if (await isMachOBinary(file, logger)) {
                 candidates.push(file);
             }
@@ -135,9 +154,9 @@ async function signBinaries(binaries, logger = console.log) {
         await fs.chmod(binary, 0o755);
         await runCommand('codesign', [
             '--force',
-            '--options runtime',
-            '--sign', `"${identity}"`,
-            `"${binary}"`
+            '--options', 'runtime',
+            '--sign', identity,
+            binary
         ], {}, logger);
     }
 }
@@ -172,11 +191,11 @@ async function notarizeBinaries(binaries, baseDir, logger = console.log) {
 
         logger('Submitting notarization request to Apple...');
         await runCommand('xcrun', [
-            'notarytool submit',
-            `"${tempZipPath}"`,
-            '--apple-id', `"${appleId}"`,
-            '--password', `"${appPassword}"`,
-            '--team-id', `"${teamId}"`,
+            'notarytool', 'submit',
+            tempZipPath,
+            '--apple-id', appleId,
+            '--password', appPassword,
+            '--team-id', teamId,
             '--wait'
         ], { timeout: 6000000 }, logger);
 
@@ -217,7 +236,11 @@ async function verifyBinaries(binaries, logger = console.log) {
     for (const binary of binaries) {
         logger(`[Verify] ${path.basename(binary)}`);
         try {
-            await runCommand('spctl', ['-a', '-vv', `"${binary}"`], {}, logger);
+            if (binary.toLowerCase().endsWith('.app')) {
+                await runCommand('spctl', ['-a', '-vv', binary], {}, logger);
+            } else {
+                await runCommand('codesign', ['-v', '--strict', '--deep', '--verbose=2', binary], {}, logger);
+            }
         } catch (error) {
             logger(`[Warning] Verification failed for ${path.basename(binary)}: ${error.message}`);
         }
