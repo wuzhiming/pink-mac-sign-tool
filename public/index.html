@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PinK- macOS 签名与公证工具</title>
-    <link rel="stylesheet" href="style.css">
+    <title>PinK 开发工具 · 签名与日志解密</title>
+    <link rel="stylesheet" href="/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
     <script src="/socket.io/socket.io.js"></script>
 </head>
@@ -17,22 +17,28 @@
 
     <div class="container">
         <header>
-            <h1>PinK macOS 签名与公证</h1>
-            <p class="subtitle">让二进制分发变得简单且安全</p>
+            <h1>PinK 开发工具</h1>
+            <p class="subtitle">macOS 签名与公证 · SUD 日志解密</p>
         </header>
 
-        <main class="glass-panel">
+        <nav class="tool-tabs" aria-label="选择工具">
+            <a id="sign-tab" class="tool-tab active" href="/sign" aria-current="page">macOS 签名与公证</a>
+            <a id="decrypt-tab" class="tool-tab" href="/logs">SUD 日志解密</a>
+        </nav>
+        <main>
+        <section id="sign-panel" class="glass-panel" aria-label="macOS 签名与公证">
+            <h2>macOS 签名与公证</h2>
+            <p class="section-description">上传二进制文件或 ZIP，按所选选项进行代码签名、苹果公证和执行权限设置，完成后下载处理后的 ZIP。</p>
             <section class="upload-section">
-                <div id="drop-zone" class="drop-zone">
-                    <div class="drop-zone-content">
-                        <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <button id="drop-zone" class="drop-zone file-drop-zone" type="button" aria-describedby="sign-guidance">
+                        <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
                         </svg>
-                        <p>将文件拖拽至此，或 <span>点击选择</span></p>
-                        <p class="file-hint">支持单个二进制文件或包含多个文件的 ZIP</p>
-                    </div>
-                    <input type="file" id="file-input" hidden>
-                </div>
+                        <span class="drop-title">将文件拖拽至此，或点击选择</span>
+                        <span class="drop-hint">每次选择一个二进制文件或 ZIP，多个文件请先打包</span>
+                </button>
+                <input type="file" id="file-input" hidden>
+                <p id="sign-guidance" class="section-description">ZIP 中的二进制文件会批量处理，并保留目录结构。苹果公证需要先完成签名，并将文件提交至 Apple，耗时较长；开始后可在下方查看处理日志。</p>
 
                 <div id="file-info" class="file-info hidden">
                     <span id="file-name">filename.zip</span>
@@ -59,7 +65,7 @@
                     </label>
                 </div>
 
-                <button id="start-btn" class="primary-btn" disabled>开始处理</button>
+                <button id="start-btn" class="primary-btn" disabled>处理并生成 ZIP 下载文件</button>
             </section>
 
             <section id="progress-section" class="progress-section hidden">
@@ -78,6 +84,45 @@
                     </a>
                 </div>
             </section>
+            <details class="api-help">
+                <summary>让 AI 直接调用 · 签名接口说明</summary>
+                <p class="section-description">复制说明给能访问此地址的 AI，即可通过 HTTP 上传并获取处理后的 ZIP。说明会同步上方的签名、公证和执行权限选项。</p>
+                <textarea id="sign-ai-instructions" class="api-instructions" aria-label="可复制给 AI 的签名接口说明" readonly spellcheck="false" rows="16"></textarea>
+                <button id="copy-sign-api" type="button" class="secondary-btn">复制给 AI</button>
+                <span id="sign-copy-status" class="copy-status" role="status"></span>
+            </details>
+        </section>
+
+        <section id="decrypt-panel" class="glass-panel hidden" aria-label="SUD 日志解密">
+            <h2>解密 SUD 日志</h2>
+            <p class="section-description">拖入一个或多个日志，每个文件分别解密并下载。上传 ZIP 则返回保留原目录和文件名的解密 ZIP。</p>
+            <form id="decrypt-form">
+                <button id="log-drop-zone" class="drop-zone file-drop-zone" type="button" aria-describedby="log-limits">
+                    <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+                    </svg>
+                    <span class="drop-title">将日志拖拽至此，或点击选择</span>
+                    <span class="drop-hint">支持多选日志或 ZIP，可继续添加文件</span>
+                </button>
+                <input id="log-file" name="file" type="file" multiple hidden>
+                <p id="log-limits" class="section-description">每个上传文件最多 100 MiB。ZIP 最多 200 个日志，解压后合计最多 256 MiB；不支持嵌套 ZIP 或带密码的 ZIP。单个文件失败不影响其他文件；ZIP 内任一日志失败则该 ZIP 失败。</p>
+                <div id="log-queue-section" class="hidden">
+                    <div class="queue-heading"><span id="log-queue-count"></span><button id="clear-logs" class="secondary-btn" type="button">清空列表</button></div>
+                    <ul id="log-queue" class="log-queue" aria-label="待解密文件及下载结果"></ul>
+                    <p class="section-description download-note">下载链接仅在当前页面有效，请在离开或刷新前保存结果。</p>
+                </div>
+                <button id="decrypt-btn" class="primary-btn" type="submit" disabled>解密并生成下载文件</button>
+            </form>
+            <p id="decrypt-status" class="decrypt-status" role="status" aria-live="polite"></p>
+
+            <details class="api-help">
+                <summary>让 AI 直接调用 · 接口使用说明</summary>
+                <p class="section-description">复制以下说明给能访问此内网地址的 AI。网页和接口使用同一处理流程，无需操作网页或连接 Socket.io。</p>
+                <textarea id="ai-instructions" class="api-instructions" aria-label="可复制给 AI 的接口说明" readonly spellcheck="false" rows="16"></textarea>
+                <button id="copy-api" type="button" class="secondary-btn">复制给 AI</button>
+                <span id="copy-status" role="status"></span>
+            </details>
+        </section>
         </main>
 
         <footer>
@@ -85,6 +130,8 @@
         </footer>
     </div>
 
-    <script src="app.js"></script>
+    <script src="/app.js"></script>
+    <script src="/logs.js"></script>
+    <script src="/sign-help.js"></script>
 </body>
 </html>
