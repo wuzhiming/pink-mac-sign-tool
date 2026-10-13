@@ -142,7 +142,7 @@ async function findBinaries(targetPath, logger = console.log) {
 /**
  * Sign a list of binaries
  */
-async function signBinaries(binaries, logger = console.log) {
+async function signBinaries(binaries, logger = console.log, runtime = {}) {
     const identity = process.env.APPLE_DEVELOPER_ID || process.env.CODESIGN_IDENTITY;
     if (!identity) {
         throw new Error('Signing identity is required. Please set APPLE_DEVELOPER_ID on the server.');
@@ -157,14 +157,14 @@ async function signBinaries(binaries, logger = console.log) {
             '--options', 'runtime',
             '--sign', identity,
             binary
-        ], {}, logger);
+        ], runtime, logger);
     }
 }
 
 /**
  * Notarize binaries
  */
-async function notarizeBinaries(binaries, baseDir, logger = console.log) {
+async function notarizeBinaries(binaries, baseDir, logger = console.log, runtime = {}) {
     const appleId = process.env.APPLE_ID;
     const appPassword = process.env.APPLE_PASSWORD;
     const teamId = process.env.APPLE_TEAM_ID;
@@ -197,7 +197,7 @@ async function notarizeBinaries(binaries, baseDir, logger = console.log) {
             '--password', appPassword,
             '--team-id', teamId,
             '--wait'
-        ], { timeout: 6000000 }, logger);
+        ], { timeout: 6000000, ...runtime }, logger);
 
         logger('Notarization completed successfully!');
     } catch (error) {
@@ -231,15 +231,15 @@ async function createZip(sourceDir, outputPath) {
 /**
  * Verifies the signature and notarization status of binaries
  */
-async function verifyBinaries(binaries, logger = console.log) {
+async function verifyBinaries(binaries, logger = console.log, runtime = {}) {
     logger('Starting verification of processed binaries...');
     for (const binary of binaries) {
         logger(`[Verify] ${path.basename(binary)}`);
         try {
             if (binary.toLowerCase().endsWith('.app')) {
-                await runCommand('spctl', ['-a', '-vv', binary], {}, logger);
+                await runCommand('spctl', ['-a', '-vv', binary], runtime, logger);
             } else {
-                await runCommand('codesign', ['-v', '--strict', '--deep', '--verbose=2', binary], {}, logger);
+                await runCommand('codesign', ['-v', '--strict', '--deep', '--verbose=2', binary], runtime, logger);
             }
         } catch (error) {
             logger(`[Warning] Verification failed for ${path.basename(binary)}: ${error.message}`);
@@ -250,7 +250,7 @@ async function verifyBinaries(binaries, logger = console.log) {
 /**
  * Main processing function
  */
-async function processBinaries(workingDir, options, logger = console.log) {
+async function processBinaries(workingDir, options, logger = console.log, runtime = {}) {
     const { sign = true, notarize = true, addExecPermission = true } = options;
 
     if (process.platform !== 'darwin') {
@@ -258,6 +258,7 @@ async function processBinaries(workingDir, options, logger = console.log) {
     }
 
     const binaries = await findBinaries(workingDir, logger);
+    runtime.signal?.throwIfAborted();
     if (binaries.length === 0) {
         logger('No binaries found to process.');
         return;
@@ -271,15 +272,15 @@ async function processBinaries(workingDir, options, logger = console.log) {
     }
 
     if (sign || notarize) {
-        await signBinaries(binaries, logger);
+        await signBinaries(binaries, logger, runtime);
     }
 
     if (notarize) {
-        await notarizeBinaries(binaries, workingDir, logger);
+        await notarizeBinaries(binaries, workingDir, logger, runtime);
     }
 
     // Final verification step
-    await verifyBinaries(binaries, logger);
+    await verifyBinaries(binaries, logger, runtime);
 }
 
 module.exports = {

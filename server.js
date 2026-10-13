@@ -7,6 +7,8 @@ const fs = require('fs-extra');
 const { v4: uuidv4 } = require('uuid');
 const { processBinaries, createZip, unzip } = require('./sign-logic');
 require('dotenv').config();
+const { createLogRouter } = require('./log-api');
+const { createSignRouter } = require('./sign-api');
 
 const app = express();
 const server = http.createServer(app);
@@ -20,7 +22,11 @@ const OUTPUT_DIR = path.join(__dirname, 'output');
 fs.ensureDirSync(UPLOADS_DIR);
 fs.ensureDirSync(OUTPUT_DIR);
 
-app.use(express.static('public'));
+app.get('/', (req, res) => res.redirect('/sign'));
+app.get(['/sign', '/logs'], (req, res) => res.sendFile(path.join(__dirname, 'public/index.html')));
+app.use(express.static(path.join(__dirname, 'public')));
+app.use('/api/logs', createLogRouter());
+app.use('/api/sign', createSignRouter());
 app.use('/download', express.static(OUTPUT_DIR));
 
 // Multer configuration
